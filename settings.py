@@ -1,6 +1,6 @@
 MQTT_ServerIP     = "192.168.5.248"
 MQTT_ServerPort   = 1883
-serialPortDevice  = '/dev/ttyACM0'
+serialPortDevice  = '/dev/ttyACM1'
 serialPortBaudrate = 57600
 LOG_FILENAME      = "/home/pi/log/rflink_mqtt.log"
 
