@@ -273,8 +273,8 @@ def serialPortThread():
                             location = "Temp-Kelder"
                         elif sensorId == 7:
                             location = "Temp-Kasje"
-                        elif sensorId == 8:
-                            location = "Temp-Gang-boven"
+                        # elif sensorId == 8:
+                        #     location = "Temp-Gang-boven"
                         #else:
                         #    location = "Temp-Unknown"
                         #    mqttTopic = "huis/RFLink/Temp-Unknown/temp"
