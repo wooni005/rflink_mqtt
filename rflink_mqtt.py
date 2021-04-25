@@ -22,8 +22,6 @@ humStatusTable = ["Dry", "Comfort", "Normal", "Wet"]
 
 sendQueue = Queue(maxsize=0)
 current_sec_time = lambda: int(round(time.time()))
-current_milli_time = lambda: int(round(time.time() * 1000))
-oldTimeout = 0
 
 exit = False
 serialPort = None
@@ -111,6 +109,7 @@ def on_message_homelogic(client, userdata, msg):
 
 
 def openSerialPort():
+    global exit
     try:
         ser = serial.Serial(port=settings.serialPortDevice,  # port='/dev/ttyACM0',
                             baudrate=settings.serialPortBaudrate,
@@ -131,6 +130,10 @@ def openSerialPort():
 
         #Report failure to Home Logic system check
         serviceReport.sendFailureToHomeLogic(serviceReport.ACTION_NOTHING, 'Serial port open failure on port %s, wrong port or USB cable missing' % (settings.serialPortDevice))
+
+        # Suppress restart loops
+        time.sleep(900) # 15 min
+        exit = True
 
 
 def closeSerialPort(ser):
@@ -193,17 +196,16 @@ def getRain(msgStr):
 
 
 def serialPortThread():
+    global exit
     global sensorData
-    global oldTimeout
     global serialPort
 
-    oldTimeout = current_sec_time()
     msgCounter = 0
     serialPort = {}
 
     serialPort = openSerialPort()
 
-    while True:
+    while not exit:
         try:
             ####################################################################
             #RFLink Protocol Reference: http://www.rflink.nl/blog2/protref
@@ -216,18 +218,10 @@ def serialPortThread():
                 msg = serInLine.split(';')
                 del msg[-1] # Delete last (empty) item. There is a last empty item, because there is a trailing ';' and split does add an empty item
 
-                #  Check the RFLink Rx timeout
-                if (current_sec_time() - oldTimeout) > 300:
-                    # Reset the RFLink Rx timeout timer
-                    oldTimeout = current_sec_time()
-
-                    #Report failure to Home Logic system check
-                    serviceReport.sendFailureToHomeLogic(serviceReport.ACTION_RESTART, 'Serial port timeout (5 min no data received)!')
-
                 # Only handle messages starting with 'OK' from RFLink
                 if msg[0] == '20':
-                    # Reset the RFLink Rx timeout timer
-                    oldTimeout = current_sec_time()
+                    # Reset the Rx timeout timer
+                    serviceReport.systemWatchTimer = current_sec_time()
 
                     # print 'OK found!'
                     del msg[0]  # remove '20' from list
@@ -394,8 +388,6 @@ def serialPortThread():
                     #else:
                     #    print("RFLink: Device: '%s' not implemented yet" % deviceName);
                     #    print("RFLink: %s %s" % (deviceName, msg))
-
-                serviceReport.systemWatchTimer = current_sec_time()
 
             # Check if there is any message to send via JeeLink
             if not sendQueue.empty():
