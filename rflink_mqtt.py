@@ -339,16 +339,19 @@ def serialPortThread():
                             mqtt_publish.single("huis/RFLink/Rook-Overloop/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
                         elif id == "ea1e53": #Werkkamer
                             mqtt_publish.single("huis/RFLink/Rook-Werkkamer/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
+                        elif id == "63aec3": #Werkplaats
+                            mqtt_publish.single("huis/RFLink/Rook-Werkplaats/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
+                        else:
+                            print("RFLink: Unknown Smoke sensor, id:%s (msg:%s)" % (id, msg))
                         # else:
                         #     mqtt_publish.single("huis/RFLink/Rook-Unknown/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        #print("RFLink: %s %s" % (deviceName, msg))
 
                     # Msg: FA20RF ['ID=9f118c', 'SWITCH=01', 'CMD=ON', 'SMOKEALERT=ON', '']
-                    elif deviceName == "FA20RF":
-                        id = getId(msg[0])
+                    # elif deviceName == "FA20RF":
+                    #     id = getId(msg[0])
                         # print("FA20RF ID: %s" % id)
-                        if id == "1d0615": #Werkplaats
-                            mqtt_publish.single("huis/RFLink/Rook-Werkplaats/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
+                        # if id == "1d0615": #Werkplaats
+                        #     mqtt_publish.single("huis/RFLink/Rook-Werkplaats/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
                         # elif id == "1d0615": #Technische ruimte
                         #     mqtt_publish.single("huis/RFLink/Rook-Technische-ruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
                         # elif id == "e605df": #Overloop
