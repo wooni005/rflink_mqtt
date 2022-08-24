@@ -5,19 +5,23 @@ import time
 # external files/classes
 import settings
 
-#System check
+# System check
 ACTION_NOTHING   = 0
 ACTION_RESTART   = 1
-current_sec_time = lambda: int(round(time.time()))
 
 checkMsg = 'OK'
 checkFail = False
 checkAction = ACTION_NOTHING
 checkReport = {}
+
+
+def current_sec_time():
+    return int(round(time.time()))
+
+
 systemWatchTimer = current_sec_time()
 
-
-#Called by mqtt
+# Called by mqtt
 def on_message_check(client, userdata, msgJson):
     if (current_sec_time() - systemWatchTimer) > 300:
         sendCheckReportToHomeLogic(True, ACTION_RESTART, "Timeout systemWatchTimer, 5 min no activity in serialPortThread-thread loop")

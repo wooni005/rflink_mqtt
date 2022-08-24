@@ -21,30 +21,32 @@ import settings
 humStatusTable = ["Dry", "Comfort", "Normal", "Wet"]
 
 sendQueue = Queue(maxsize=0)
-current_sec_time = lambda: int(round(time.time()))
-
-exit = False
+exitThread = False
 serialPort = None
 
 
+def current_sec_time():
+    return int(round(time.time()))
+
+
 def signal_handler(_signal, frame):
-    global exit
+    global exitThread
 
     print('You pressed Ctrl+C!')
-    exit = True
+    exitThread = True
 
 
 # The callback for when the client receives a CONNACK response from the server.
-def on_connect(client, userdata, flags, rc):
+def on_connect(_client, userdata, flags, rc):
     if rc == 0:
         print("MQTT Client connected successfully")
-        client.subscribe([(settings.MQTT_TOPIC_OUT, 1), (settings.MQTT_TOPIC_CHECK, 1)])
+        _client.subscribe([(settings.MQTT_TOPIC_OUT, 1), (settings.MQTT_TOPIC_CHECK, 1)])
     else:
         print(("ERROR: MQTT Client connected with result code %s " % str(rc)))
 
 
 def setKaKu(unit, val):
-    #10;NewKaku;00baea06;3;ON;
+    # 10;NewKaku;00baea06;3;ON;
     if int(val) != 0:
         sendQueue.put(("10;NewKaku;00baea06;%d;ON;\r\n" % unit).encode())
     else:
@@ -52,7 +54,7 @@ def setKaKu(unit, val):
 
 
 def setEcolite(unit, val):
-    #10;TriState;85562a;2;OFF;
+    # 10;TriState;85562a;2;OFF;
     if int(val) != 0:
         sendQueue.put(("10;TriState;85562a;%d;ON;\r\n" % unit).encode())
     else:
@@ -60,7 +62,7 @@ def setEcolite(unit, val):
 
 
 def setSilverCrest(unit, val):
-    #10;Unitec;60bf;3;ON;
+    # 10;Unitec;60bf;3;ON;
     if int(val) != 0:
         sendQueue.put(("10;Unitec;60bf;%d;ON;\r\n" % unit).encode())
     else:
@@ -68,48 +70,48 @@ def setSilverCrest(unit, val):
 
 
 def setFlamingo(unit, val):
-    #10;AB400D;48;3;ON;
+    # 10;AB400D;48;3;ON;
     if int(val) != 0:
         sendQueue.put(("10;AB400D;48;%d;ON;\r\n" % unit).encode())
     else:
         sendQueue.put(("10;AB400D;48;%d;OFF;\r\n" % unit).encode())
 
 
-# The callback for when a PUBLISH message is received from the server
-def on_message(client, userdata, msg):
+# The callback for when a published message is received from the server
+def on_message(_client, userdata, msg):
     print(('ERROR: Received ' + msg.topic + ' in on_message function' + str(msg.payload)))
 
 
-def on_message_homelogic(client, userdata, msg):
-    #print(msg.topic + " " + str(msg.payload))
+def on_message_homelogic(_client, userdata, msg):
+    # print(msg.topic + " " + str(msg.payload))
     topics = msg.topic.split("/")
 
-    deviceName = topics[2] #huis/RFXtrx/KaKu-12/out
-    cmnd = deviceName.split("-") #KaKu-12
+    deviceName = topics[2]  # huis/RFXtrx/KaKu-12/out
+    cmnd = deviceName.split("-")  # KaKu-12
 
     # KaKu-12
     if cmnd[0] == "KaKu":
-        #print("Activate KaKu WCD: %s" % cmnd[1])
+        # print("Activate KaKu WCD: %s" % cmnd[1])
         setKaKu(int(cmnd[1]), msg.payload)
 
     # Ecolite-2
     elif cmnd[0] == "Ecolite":
-        #print("Activate Ecolite WCD %s: %s" % (cmnd[1], msg.payload))
+        # print("Activate Ecolite WCD %s: %s" % (cmnd[1], msg.payload))
         setEcolite(int(cmnd[1]), msg.payload)
 
     # SilverCrest-4
     elif cmnd[0] == "SilverCrest":
-        #print("Activate SilverCrest WCD: %s" % cmnd[1])
+        # print("Activate SilverCrest WCD: %s" % cmnd[1])
         setSilverCrest(int(cmnd[1]), msg.payload)
 
     # Flamingo-3
     elif cmnd[0] == "Flamingo":
-        #print("Activate Flamingo WCD: %s" % cmnd[1])
+        # print("Activate Flamingo WCD: %s" % cmnd[1])
         setFlamingo(int(cmnd[1]), msg.payload)
 
 
 def openSerialPort():
-    global exit
+    global exitThread
     try:
         ser = serial.Serial(port=settings.serialPortDevice,  # port='/dev/ttyACM0',
                             baudrate=settings.serialPortBaudrate,
@@ -119,7 +121,7 @@ def openSerialPort():
                             timeout=1)  # 1=1sec 0=non-blocking None=Blocked
 
         if ser.isOpen():
-            print(("rflink_mqtt: Successfully connected to serial port %s" % (settings.serialPortDevice)))
+            print(("rflink_mqtt: Successfully connected to serial port %s" % settings.serialPortDevice))
 
         return ser
 
@@ -128,12 +130,12 @@ def openSerialPort():
         print("%s" % str(arg))
         traceback.print_exc()
 
-        #Report failure to Home Logic system check
-        serviceReport.sendFailureToHomeLogic(serviceReport.ACTION_NOTHING, 'Serial port open failure on port %s, wrong port or USB cable missing' % (settings.serialPortDevice))
+        # Report failure to Home Logic system check
+        serviceReport.sendFailureToHomeLogic(serviceReport.ACTION_NOTHING, 'Serial port open failure on port %s, wrong port or USB cable missing' % settings.serialPortDevice)
 
         # Suppress restart loops
-        time.sleep(900) # 15 min
-        exit = True
+        time.sleep(900)  # 15 min
+        exitThread = True
 
 
 def closeSerialPort(ser):
@@ -141,8 +143,8 @@ def closeSerialPort(ser):
 
 
 def getId(msgStr):
-    id = msgStr.split('=')
-    return id[1]
+    _id = msgStr.split('=')
+    return _id[1]
 
 
 def getTemp(msgStr):
@@ -196,8 +198,7 @@ def getRain(msgStr):
 
 
 def serialPortThread():
-    global exit
-    global sensorData
+    global exitThread
     global serialPort
 
     msgCounter = 0
@@ -205,18 +206,18 @@ def serialPortThread():
 
     serialPort = openSerialPort()
 
-    while not exit:
+    while not exitThread:
         try:
             ####################################################################
-            #RFLink Protocol Reference: http://www.rflink.nl/blog2/protref
+            # RFLink Protocol Reference: http://www.rflink.nl/blog2/protref
             ####################################################################
             serInLine = serialPort.readline().decode()
 
             if serInLine != "":
                 serInLine = serInLine.rstrip("\r\n")
-                #print("RFLink serial in: %s" % (serInLine))
+                # print("RFLink serial in: %s" % (serInLine))
                 msg = serInLine.split(';')
-                del msg[-1] # Delete last (empty) item. There is a last empty item, because there is a trailing ';' and split does add an empty item
+                del msg[-1]  # Delete last (empty) item. There is a last empty item, because there is a trailing ';' and split does add an empty item
 
                 # Only handle messages starting with 'OK' from RFLink
                 if msg[0] == '20':
@@ -224,14 +225,14 @@ def serialPortThread():
                     serviceReport.systemWatchTimer = current_sec_time()
 
                     # print 'OK found!'
-                    del msg[0]  # remove '20' from list
+                    del msg[0]  # remove "20" from list
 
                     # msgCount 0..FF
                     tCnt = int(msg[0], 16)
                     if msgCounter != tCnt:
                         print(("WARNING: Msg counter not OK, missing messages! msgCounter: %d, msg[1]: %d" % (msgCounter, tCnt)))
                         msgCounter = tCnt
-                    #else:
+                    # else:
                     #    print("msgCount OK")
                     msgCounter = msgCounter + 1
                     if msgCounter >= 256:
@@ -241,25 +242,25 @@ def serialPortThread():
                     deviceName = msg[0]
                     del msg[0]  # remove deviceName from list
 
-                    #print("RFLink: %s %s" % (deviceName, msg))
+                    # print("RFLink: %s %s" % (deviceName, msg))
 
-                    #Oregon TempHygro ['ID=52833', 'TEMP=00d4', 'HUM=71', 'HSTATUS=3', 'BAT=OK']
+                    # Oregon TempHygro ['ID=52833', 'TEMP=00d4', 'HUM=71', 'HSTATUS=3', 'BAT=OK']
                     if deviceName == "Oregon TempHygro":
                         location = ""
-                        id = getId(msg[0])
-                        sensorId = (int(id, 16) & 0xF0000) >> 16
+                        _id = getId(msg[0])
+                        sensorId = (int(_id, 16) & 0xF0000) >> 16
                         temp = getTemp(msg[1])
                         hum = getHum(msg[2])
-                        #humStatus = getHumStatus(msg[3])
+                        # humStatus = getHumStatus(msg[3])
 
                         # Temp-Humi Sensoren THGR810
-                        #if sensorId == 1:
+                        # if sensorId == 1:
                         #    location = "Temp-Buiten"
-                        #elif sensorId == 2:
+                        # elif sensorId == 2:
                         #    location = "Temp-Wasruimte"
-                        #elif sensorId == 3:
+                        # elif sensorId == 3:
                         #    location = "Temp-Badkamer"
-                        #elif sensorId == 4:
+                        # elif sensorId == 4:
                         #    location = "Temp-Woonkamer"
                         if sensorId == 5:
                             location = "Temp-Werkplaats"
@@ -269,80 +270,74 @@ def serialPortThread():
                             location = "Temp-Kasje"
                         # elif sensorId == 8:
                         #     location = "Temp-Gang-boven"
-                        #else:
+                        # else:
                         #    location = "Temp-Unknown"
                         #    mqttTopic = "huis/RFLink/Temp-Unknown/temp"
 
                         if location != "":
-                            sensorData = {}
-                            sensorData['Temperature'] = "%1.1f" % temp
-                            sensorData['Humidity'] = hum
-                            #sensorData['Humidity status'] = humStatus
-                            #sensorData['Battery level'] = batteryLevel
-                            #sensorData['Signal level'] = 1
+                            sensorData = {'Temperature': "%1.1f" % temp, 'Humidity': hum}
+                            # sensorData['Humidity status'] = humStatus
+                            # sensorData['Battery level'] = batteryLevel
+                            # sensorData['Signal level'] = 1
 
                             mqttTopic = "huis/RFLink/%s/temp" % location
                             mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
 
-                            #print("Oregon %s(id=%d) temp=%2.1fC hum=%d(%s)" % (location, sensorId, temp, hum, getHumStatus(msg[3])))
+                            # print("Oregon %s(id=%d) temp=%2.1fC hum=%d(%s)" % (location, sensorId, temp, hum, getHumStatus(msg[3])))
 
                     # Oregon Wind ['ID=1AC4', 'WINDIR=0015', 'WINGS=0015', 'WINSP=0020', 'BAT=OK']
-                    #WINDIR=0..15 (1step=22,5 degrees)
-                    #WINGS=Wind gust in km/h [0,1km/h]
-                    #WINSP=Wind speed in km/h [0,1km/h]
+                    # WINDIR=0..15 (1step=22,5 degrees)
+                    # WINGS=Wind gust in km/h [0,1km/h]
+                    # WINSP=Wind speed in km/h [0,1km/h]
                     elif deviceName == "Oregon Wind":
-                        #ID OK?
+                        # ID OK?
                         if getId(msg[0]) == '1AC4':
-                            windDir   = getWindDirection(msg[1])
-                            windGust  = getWind(msg[2])
+                            windDir = getWindDirection(msg[1])
+                            windGust = getWind(msg[2])
                             windSpeed = getWind(msg[3])
 
-                            sensorData = {}
-                            sensorData['WindDir'] = "%1.0f" % windDir
-                            sensorData['WindGust'] = "%1.1f" % windGust
-                            sensorData['WindSpeed'] = "%1.1f" % windSpeed
-                            #sensorData['Battery level'] = batteryLevel
-                            #sensorData['Signal level'] = 1
+                            sensorData = {'WindDir': "%1.0f" % windDir, 'WindGust': "%1.1f" % windGust,
+                                          'WindSpeed': "%1.1f" % windSpeed}
+                            # sensorData['Battery level'] = batteryLevel
+                            # sensorData['Signal level'] = 1
 
                             mqtt_publish.single("huis/RFLink/Wind/weer", json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
 
-                            #print("Oregon Wind windDir=%1.1f° windGust=%1.1f km/h windSpeed=%1.1 km/hf" % (windDir, windGust, windSpeed))
+                            # print("Oregon Wind windDir=%1.1f° windGust=%1.1f km/h windSpeed=%1.1 km/hf" % (windDir, windGust, windSpeed))
 
-                    #Oregon Rain2 ['ID=2A6E', 'RAINRATE=00b9', 'RAIN=004a', 'BAT=OK']
-                    #RAINRATE=Rain rate in mm [0,1mm]
-                    #RAIN=Total rain in mm [0,1mm]
+                    # Oregon Rain2 ['ID=2A6E', 'RAINRATE=00b9', 'RAIN=004a', 'BAT=OK']
+                    # RAINRATE=Rain rate in mm [0,1mm]
+                    # RAIN=Total rain in mm [0,1mm]
                     elif deviceName == "Oregon Rain2":
-                        #ID OK?
+                        # ID OK?
                         if getId(msg[0]) == '2A6E':
-                            rainRate  = getRain(msg[1])
+                            rainRate = getRain(msg[1])
                             rainTotal = getRain(msg[2])
 
-                            sensorData = {}
-                            sensorData['RainRate'] = "%1.1f" % rainRate
-                            sensorData['RainTotal'] = "%1.1f" % rainTotal
-                            #sensorData['Battery level'] = batteryLevel
-                            #sensorData['Signal level'] = 1
+                            sensorData = {'RainRate': "%1.1f" % rainRate, 'RainTotal': "%1.1f" % rainTotal}
+                            # sensorData['Battery level'] = batteryLevel
+                            # sensorData['Signal level'] = 1
 
                             mqtt_publish.single("huis/RFLink/Rain/weer", json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
 
-                            #print("Oregon Rain rainRate=%1.1fmm rainTotal=%1.1fmm" % (rainRate, rainTotal))
+                            # print("Oregon Rain rainRate=%1.1fmm rainTotal=%1.1fmm" % (rainRate, rainTotal))
 
                     # Msg: RM174RF ['ID=5bab23', 'SWITCH=01', 'CMD=ON', 'SMOKEALERT=ON', '']
                     elif deviceName == "RM174RF":
-                        id = getId(msg[0])
+                        _id = getId(msg[0])
                         # print("RM174RF ID: %s" % id)
-                        if id == "5bab23": #Wasruimte
+                        if _id == "5bab23":  # Wasruimte
                             mqtt_publish.single("huis/RFLink/Rook-Wasruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif id == "52b453": #Technische ruimte
+                        elif _id == "52b453":  # Technische ruimte
                             mqtt_publish.single("huis/RFLink/Rook-Technische-ruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif id == "cbcc23": #Overloop
+                        elif _id == "cbcc23":  # Overloop
                             mqtt_publish.single("huis/RFLink/Rook-Overloop/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif id == "ea1e53": #Werkkamer
+                        elif _id == "ea1e53":  # Werkkamer
                             mqtt_publish.single("huis/RFLink/Rook-Werkkamer/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif id == "63aec3": #Werkplaats
+                        elif _id == "63aec3":  # Werkplaats
                             mqtt_publish.single("huis/RFLink/Rook-Werkplaats/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
                         else:
-                            print("RFLink: Unknown Smoke sensor, id:%s (msg:%s)" % (id, msg))
+                            print("RFLink: Unknown Smoke sensor, id:%s (msg:%s)" % (_id, msg))
                         # else:
                         #     mqtt_publish.single("huis/RFLink/Rook-Unknown/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
 
@@ -360,23 +355,22 @@ def serialPortThread():
                         #     mqtt_publish.single("huis/RFLink/Rook-Wasruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
                         # else:
                         #     mqtt_publish.single("huis/RFLink/Rook-Unknown/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        #print("RFLink: %s %s" % (deviceName, msg))
+                        # print("RFLink: %s %s" % (deviceName, msg))
 
                     elif deviceName == "NewKaku":
-                        id = getId(msg[0])
-                        #print("RFLink: %s %s" % (deviceName, msg))
+                        _id = getId(msg[0])
+                        # print("RFLink: %s %s" % (deviceName, msg))
 
                     # Auriol ['ID=004B', 'TEMP=8028', 'BAT=LOW']
                     elif deviceName == "Auriol":
-                        id = getId(msg[0])
+                        _id = getId(msg[0])
                         temp = getTemp(msg[1])
-                        if id == "004B": #Binnenplaats
-                            sensorData = {}
-                            sensorData['Temperature'] = temp
-                            #sensorData['Humidity'] = -1
-                            #sensorData['Humidity status'] = -1
-                            #sensorData['Battery level'] = getBattStatus(msg[2])
-                            #sensorData['Signal level'] = 1
+                        if _id == "004B":  # Binnenplaats
+                            sensorData = {'Temperature': temp}
+                            # sensorData['Humidity'] = -1
+                            # sensorData['Humidity status'] = -1
+                            # sensorData['Battery level'] = getBattStatus(msg[2])
+                            # sensorData['Signal level'] = 1
 
                             mqttTopic = "huis/RFLink/Temp-Binnenplaats/temp"
                             mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
@@ -389,15 +383,15 @@ def serialPortThread():
                     elif deviceName.startswith("OK"):
                         # RFLink OK
                         print()
-                        #print("OK!")
-                    #else:
+                        # print("OK!")
+                    # else:
                     #    print("RFLink: Device: '%s' not implemented yet" % deviceName);
                     #    print("RFLink: %s %s" % (deviceName, msg))
 
             # Check if there is any message to send via JeeLink
             if not sendQueue.empty():
                 sendMsg = sendQueue.get_nowait()
-                #print "SendMsg:", sendMsg
+                # print "SendMsg:", sendMsg
                 if sendMsg != "":
                     serialPort.write(sendMsg)
 
@@ -464,7 +458,7 @@ except Exception:
 # manual interface.
 
 
-while not exit:
+while not exitThread:
     time.sleep(60)  # 60s
 
 if serialPort is not None:
