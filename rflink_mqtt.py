@@ -11,14 +11,48 @@ from queue import Queue
 import json
 import paho.mqtt.publish as mqtt_publish
 import paho.mqtt.client as mqtt_client
+import configparser
 
 # external files/classes
 import logger
 import serviceReport
-import settings
 
 # Temp-Humi Sensoren THGR810
 humStatusTable = ["Dry", "Comfort", "Normal", "Wet"]
+
+RFLINK_ZOLDER = 1
+RFLINK_WOONKAMER = 2
+
+settings = {}
+rfLinkNr = 0
+
+rfLinkDevicesNameTable = {
+    "Oregon TempHygro": {
+        1: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Buiten/temp" ],
+        2: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Wasruimte/temp" ],
+        3: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Badkamer/temp" ],
+        4: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Woonkamer/temp" ],
+        5: [ RFLINK_ZOLDER,    "huis/RFLink/Temp-Werkplaats/temp" ],
+        6: [ RFLINK_ZOLDER,    "huis/RFLink/Temp-Kelder/temp" ],
+        7: [ RFLINK_ZOLDER,    "huis/RFLink/Temp-Kasje/temp" ],
+        8: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Gang-boven/temp" ]
+    },
+    "RM174RF": {
+        "5bab23": [ RFLINK_ZOLDER,    "huis/RFLink/Rook-Wasruimte/rook" ],
+        "52b453": [ RFLINK_ZOLDER,    "huis/RFLink/Rook-Technische-ruimte/rook" ],
+        "cbcc23": [ RFLINK_WOONKAMER, "huis/RFLink/Rook-Overloop/rook" ],
+        "ea1e53": [ RFLINK_WOONKAMER, "huis/RFLink/Rook-Werkkamer/rook" ],
+        "63aec3": [ RFLINK_ZOLDER,    "huis/RFLink/Rook-Werkplaats/rook" ]
+    },
+    "Auriol": {
+        "00B1": [ RFLINK_ZOLDER,      "huis/RFLink/Temp-Binnenplaats/temp" ]
+    },
+    #Firstline ['ID=0080', 'TEMP=017d']
+    "Firstline": {
+        "0080": [ RFLINK_ZOLDER,      "huis/RFLink/Temp-Vriezer-Werkplaats/temp" ]
+    }
+}
+
 
 sendQueue = Queue(maxsize=0)
 exitThread = False
@@ -40,7 +74,7 @@ def signal_handler(_signal, frame):
 def on_connect(_client, userdata, flags, rc):
     if rc == 0:
         print("MQTT Client connected successfully")
-        _client.subscribe([(settings.MQTT_TOPIC_OUT, 1), (settings.MQTT_TOPIC_CHECK, 1)])
+        _client.subscribe([(settings["MQTTtopicOut"], 1), (settings["MQTTtopicCheck"], 1)])
     else:
         print(("ERROR: MQTT Client connected with result code %s " % str(rc)))
 
@@ -113,15 +147,15 @@ def on_message_homelogic(_client, userdata, msg):
 def openSerialPort():
     global exitThread
     try:
-        ser = serial.Serial(port=settings.serialPortDevice,  # port='/dev/ttyACM0',
-                            baudrate=settings.serialPortBaudrate,
+        ser = serial.Serial(port=settings["serialPortDevice"],  # port='/dev/ttyACM0',
+                            baudrate=int(settings["serialPortBaudrate"]),
                             parity=serial.PARITY_NONE,
                             stopbits=serial.STOPBITS_ONE,
                             bytesize=serial.EIGHTBITS,
                             timeout=1)  # 1=1sec 0=non-blocking None=Blocked
 
         if ser.isOpen():
-            print(("rflink_mqtt: Successfully connected to serial port %s" % settings.serialPortDevice))
+            print(("rflink_mqtt: Successfully connected to serial port %s" % settings["serialPortDevice"]))
 
         return ser
 
@@ -131,7 +165,7 @@ def openSerialPort():
         traceback.print_exc()
 
         # Report failure to Home Logic system check
-        serviceReport.sendFailureToHomeLogic(serviceReport.ACTION_NOTHING, 'Serial port open failure on port %s, wrong port or USB cable missing' % settings.serialPortDevice)
+        serviceReport.sendFailureToHomeLogic(serviceReport.ACTION_NOTHING, 'Serial port open failure on port %s, wrong port or USB cable missing' % settings["serialPortDevice"])
 
         # Suppress restart loops
         time.sleep(900)  # 15 min
@@ -170,10 +204,7 @@ def getHumStatus(msgStr):
 
 def getBattStatus(msgStr):
     val = msgStr.split('=')
-    if val[1] == "OK":
-        return 99
-    else:
-        return 0
+    return val[1]
 
 
 def getWindDirection(msgStr):
@@ -241,141 +272,61 @@ def serialPortThread():
 
                     deviceName = msg[0]
                     del msg[0]  # remove deviceName from list
+                    
+                    # print("%s %s" % (deviceName, msg))
 
-                    # print("RFLink: %s %s" % (deviceName, msg))
-
+                    # Temp-Humi Sensoren THGR810
                     # Oregon TempHygro ['ID=52833', 'TEMP=00d4', 'HUM=71', 'HSTATUS=3', 'BAT=OK']
                     if deviceName == "Oregon TempHygro":
-                        location = ""
                         _id = getId(msg[0])
                         sensorId = (int(_id, 16) & 0xF0000) >> 16
-                        temp = getTemp(msg[1])
-                        hum = getHum(msg[2])
-                        # humStatus = getHumStatus(msg[3])
-
-                        # Temp-Humi Sensoren THGR810
-                        # if sensorId == 1:
-                        #    location = "Temp-Buiten"
-                        # elif sensorId == 2:
-                        #    location = "Temp-Wasruimte"
-                        # elif sensorId == 3:
-                        #    location = "Temp-Badkamer"
-                        # elif sensorId == 4:
-                        #    location = "Temp-Woonkamer"
-                        if sensorId == 5:
-                            location = "Temp-Werkplaats"
-                        elif sensorId == 6:
-                            location = "Temp-Kelder"
-                        elif sensorId == 7:
-                            location = "Temp-Kasje"
-                        # elif sensorId == 8:
-                        #     location = "Temp-Gang-boven"
-                        # else:
-                        #    location = "Temp-Unknown"
-                        #    mqttTopic = "huis/RFLink/Temp-Unknown/temp"
-
-                        if location != "":
+                        if rfLinkDevicesNameTable[deviceName][sensorId][0] == rfLinkNr:
+                            temp = getTemp(msg[1])
+                            hum = getHum(msg[2])
+                            
                             sensorData = {'Temperature': "%1.1f" % temp, 'Humidity': hum}
-                            # sensorData['Humidity status'] = humStatus
-                            # sensorData['Battery level'] = batteryLevel
-                            # sensorData['Signal level'] = 1
+                            sensorData['Hstat'] = getHumStatus(msg[3])
+                            sensorData['Batt'] = getBattStatus(msg[4])
 
-                            mqttTopic = "huis/RFLink/%s/temp" % location
-                            mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
-
-                            # print("Oregon %s(id=%d) temp=%2.1fC hum=%d(%s)" % (location, sensorId, temp, hum, getHumStatus(msg[3])))
-
-                    # Oregon Wind ['ID=1AC4', 'WINDIR=0015', 'WINGS=0015', 'WINSP=0020', 'BAT=OK']
-                    # WINDIR=0..15 (1step=22,5 degrees)
-                    # WINGS=Wind gust in km/h [0,1km/h]
-                    # WINSP=Wind speed in km/h [0,1km/h]
-                    elif deviceName == "Oregon Wind":
-                        # ID OK?
-                        if getId(msg[0]) == '1AC4':
-                            windDir = getWindDirection(msg[1])
-                            windGust = getWind(msg[2])
-                            windSpeed = getWind(msg[3])
-
-                            sensorData = {'WindDir': "%1.0f" % windDir, 'WindGust': "%1.1f" % windGust,
-                                          'WindSpeed': "%1.1f" % windSpeed}
-                            # sensorData['Battery level'] = batteryLevel
-                            # sensorData['Signal level'] = 1
-
-                            mqtt_publish.single("huis/RFLink/Wind/weer", json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
-
-                            # print("Oregon Wind windDir=%1.1f° windGust=%1.1f km/h windSpeed=%1.1 km/hf" % (windDir, windGust, windSpeed))
-
-                    # Oregon Rain2 ['ID=2A6E', 'RAINRATE=00b9', 'RAIN=004a', 'BAT=OK']
-                    # RAINRATE=Rain rate in mm [0,1mm]
-                    # RAIN=Total rain in mm [0,1mm]
-                    elif deviceName == "Oregon Rain2":
-                        # ID OK?
-                        if getId(msg[0]) == '2A6E':
-                            rainRate = getRain(msg[1])
-                            rainTotal = getRain(msg[2])
-
-                            sensorData = {'RainRate': "%1.1f" % rainRate, 'RainTotal': "%1.1f" % rainTotal}
-                            # sensorData['Battery level'] = batteryLevel
-                            # sensorData['Signal level'] = 1
-
-                            mqtt_publish.single("huis/RFLink/Rain/weer", json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
-
-                            # print("Oregon Rain rainRate=%1.1fmm rainTotal=%1.1fmm" % (rainRate, rainTotal))
+                            mqttTopic = rfLinkDevicesNameTable[deviceName][sensorId][1]
+                            mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings["MQTT_ServerIP"], retain=True)
+                            # print(" -> Oregon %s(id=%d) temp=%2.1fC hum=%d(%s) bat=%s" % (mqttTopic.split("/")[2], sensorId, temp, hum, getHumStatus(msg[3]), getBattStatus(msg[4])))
 
                     # Msg: RM174RF ['ID=5bab23', 'SWITCH=01', 'CMD=ON', 'SMOKEALERT=ON', '']
                     elif deviceName == "RM174RF":
                         _id = getId(msg[0])
-                        # print("RM174RF ID: %s" % id)
-                        if _id == "5bab23":  # Wasruimte
-                            mqtt_publish.single("huis/RFLink/Rook-Wasruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif _id == "52b453":  # Technische ruimte
-                            mqtt_publish.single("huis/RFLink/Rook-Technische-ruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif _id == "cbcc23":  # Overloop
-                            mqtt_publish.single("huis/RFLink/Rook-Overloop/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif _id == "ea1e53":  # Werkkamer
-                            mqtt_publish.single("huis/RFLink/Rook-Werkkamer/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        elif _id == "63aec3":  # Werkplaats
-                            mqtt_publish.single("huis/RFLink/Rook-Werkplaats/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        else:
-                            print("RFLink: Unknown Smoke sensor, id:%s (msg:%s)" % (_id, msg))
-                        # else:
-                        #     mqtt_publish.single("huis/RFLink/Rook-Unknown/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
 
-                    # Msg: FA20RF ['ID=9f118c', 'SWITCH=01', 'CMD=ON', 'SMOKEALERT=ON', '']
-                    # elif deviceName == "FA20RF":
-                    #     id = getId(msg[0])
-                        # print("FA20RF ID: %s" % id)
-                        # if id == "1d0615": #Werkplaats
-                        #     mqtt_publish.single("huis/RFLink/Rook-Werkplaats/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        # elif id == "1d0615": #Technische ruimte
-                        #     mqtt_publish.single("huis/RFLink/Rook-Technische-ruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        # elif id == "e605df": #Overloop
-                        #     mqtt_publish.single("huis/RFLink/Rook-Overloop/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        # elif id == "9f118c": #Wasruimte
-                        #     mqtt_publish.single("huis/RFLink/Rook-Wasruimte/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        # else:
-                        #     mqtt_publish.single("huis/RFLink/Rook-Unknown/rook", 1, qos=1, hostname=settings.MQTT_ServerIP)
-                        # print("RFLink: %s %s" % (deviceName, msg))
+                        if rfLinkDevicesNameTable[deviceName][_id][0] == rfLinkNr:
+                            mqttTopic = rfLinkDevicesNameTable[deviceName][_id][1]
+                            mqtt_publish.single(mqttTopic, 1, qos=1, hostname=settings["MQTT_ServerIP"])
+                            # print(" -> RM174RF %s (id:%s)" % (mqttTopic.split("/")[2], id))
 
                     elif deviceName == "NewKaku":
                         _id = getId(msg[0])
                         # print("RFLink: %s %s" % (deviceName, msg))
 
                     # Auriol ['ID=004B', 'TEMP=8028', 'BAT=LOW']
+                    # 20;38;Auriol;ID=00B1;TEMP=000c;BAT=OK;
                     elif deviceName == "Auriol":
                         _id = getId(msg[0])
-                        temp = getTemp(msg[1])
-                        if _id == "004B":  # Binnenplaats
-                            sensorData = {'Temperature': temp}
-                            # sensorData['Humidity'] = -1
-                            # sensorData['Humidity status'] = -1
-                            # sensorData['Battery level'] = getBattStatus(msg[2])
-                            # sensorData['Signal level'] = 1
+                        if rfLinkDevicesNameTable[deviceName][_id][0] == rfLinkNr:
+                            temp = getTemp(msg[1])
+                            sensorData = {'Temperature': round(temp, 1)}
+                            sensorData['Batt'] = getBattStatus(msg[2])
 
-                            mqttTopic = "huis/RFLink/Temp-Binnenplaats/temp"
-                            mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings.MQTT_ServerIP, retain=True)
+                            mqttTopic = rfLinkDevicesNameTable[deviceName][_id][1]
+                            mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings["MQTT_ServerIP"], retain=True)
+                            # print((" -> Auriol Binnenplaats temp: %2.1f" % temp))
 
-                            print(("Binnenplaats temp: %2.1f" % temp))
+                    elif deviceName == "Firstline":
+                        _id = getId(msg[0])
+                        if rfLinkDevicesNameTable[deviceName][_id][0] == rfLinkNr:
+                            temp = getTemp(msg[1])
+                            sensorData = {'Temperature': round(temp, 1)}
+
+                            mqttTopic = rfLinkDevicesNameTable[deviceName][_id][1]
+                            mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings["MQTT_ServerIP"], retain=True)
+                            # print((" -> Firstline Vriezer Werkplaats temp: %2.1f" % temp))
 
                     elif deviceName.startswith("Nodo RadioFrequencyLink"):
                         # RFLink is started
@@ -424,24 +375,32 @@ def print_time(delay):
 ###
 # Initalisation ####
 ###
-logger.initLogger(settings.LOG_FILENAME)
+config = configparser.ConfigParser()
+config.read('settings.ini')
+settings = config["DEFAULT"]
+
+rfLinkNr = int(settings["RFLinkNr"])
+
+serviceReport.setingsMQTT(settings["MQTT_ServerIP"], settings["MQTTtopicReport"])
+
+logger.initLogger(settings["logFileName"])
 
 # Init signal handler, because otherwise Ctrl-C does not work
 signal.signal(signal.SIGINT, signal_handler)
 
 # Make the following devices accessable for user
-os.system("sudo chmod 666 %s" % settings.serialPortDevice)
+os.system("sudo chmod 666 %s" % settings["serialPortDevice"])
 
 # Give Home Assistant and Mosquitto the time to startup
 time.sleep(2)
 
 # First start the MQTT client
 client = mqtt_client.Client()
-client.message_callback_add(settings.MQTT_TOPIC_OUT,       on_message_homelogic)
-client.message_callback_add(settings.MQTT_TOPIC_CHECK,     serviceReport.on_message_check)
+client.message_callback_add(settings["MQTTtopicOut"],       on_message_homelogic)
+client.message_callback_add(settings["MQTTtopicCheck"],     serviceReport.on_message_check)
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect(settings.MQTT_ServerIP, settings.MQTT_ServerPort, 60)
+client.connect(settings["MQTT_ServerIP"], int(settings["MQTT_ServerPort"]), 60)
 client.loop_start()
 
 # Create the serialPortThread
@@ -459,7 +418,7 @@ except Exception:
 
 
 while not exitThread:
-    time.sleep(60)  # 60s
+    time.sleep(1)  # 60s
 
 if serialPort is not None:
     closeSerialPort(serialPort)

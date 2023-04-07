@@ -1,0 +1,16 @@
+[DEFAULT]
+
+MQTT_ServerIP      = 192.168.5.248
+MQTT_ServerPort    = 1883
+serialPortDevice   = /dev/ttyACM1
+serialPortBaudrate = 57600
+logFileName        = /home/pi/log/rflink_mqtt.log
+
+# RFLINK_ZOLDER    = 1
+# RFLINK_WOONKAMER = 2
+RFLinkNr = 1
+
+MQTTtopicOut       = huis/RFLink1/+/out
+MQTTtopicCheck     = huis/RFLink/RPiVideo1/check
+MQTTtopicReport    = huis/RFLink/RPiVideo1/report
+

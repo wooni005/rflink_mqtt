@@ -2,9 +2,6 @@ import paho.mqtt.publish as mqtt_publish
 import json
 import time
 
-# external files/classes
-import settings
-
 # System check
 ACTION_NOTHING   = 0
 ACTION_RESTART   = 1
@@ -13,13 +10,19 @@ checkMsg = 'OK'
 checkFail = False
 checkAction = ACTION_NOTHING
 checkReport = {}
-
+settings = {}
 
 def current_sec_time():
     return int(round(time.time()))
 
 
 systemWatchTimer = current_sec_time()
+
+# Settings from settings.ini file
+def setingsMQTT(mqttServerIp, topicReport):
+    settings["MQTT_ServerIP"]   = mqttServerIp
+    settings["MQTTtopicReport"] = topicReport
+
 
 # Called by mqtt
 def on_message_check(client, userdata, msgJson):
@@ -40,7 +43,7 @@ def sendCheckReportToHomeLogic(fail, action, msg):
     checkReport['checkFail']   = checkFail
     checkReport['checkAction'] = checkAction
     checkReport['checkMsg']    = checkMsg
-    mqtt_publish.single(settings.MQTT_TOPIC_REPORT, json.dumps(checkReport), qos=1, hostname=settings.MQTT_ServerIP)
+    mqtt_publish.single(settings["MQTTtopicReport"], json.dumps(checkReport), qos=1, hostname=settings["MQTT_ServerIP"])
 
 
 #Don't wait for the Home Logic system checker, report it directly
