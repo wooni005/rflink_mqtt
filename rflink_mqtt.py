@@ -35,7 +35,7 @@ rfLinkDevicesNameTable = {
         5: [ RFLINK_ZOLDER,    "huis/RFLink/Temp-Werkplaats/temp" ],
         6: [ RFLINK_ZOLDER,    "huis/RFLink/Temp-Kelder/temp" ],
         7: [ RFLINK_ZOLDER,    "huis/RFLink/Temp-Kasje/temp" ],
-        8: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Gang-boven/temp" ]
+        # 8: [ RFLINK_WOONKAMER, "huis/RFLink/Temp-Gang-Boven/temp" ]
     },
     "RM174RF": {
         "5bab23": [ RFLINK_ZOLDER,    "huis/RFLink/Rook-Wasruimte/rook" ],
@@ -82,9 +82,9 @@ def on_connect(_client, userdata, flags, rc):
 def setKaKu(unit, val):
     # 10;NewKaku;00baea06;3;ON;
     if int(val) != 0:
-        sendQueue.put(("10;NewKaku;00baea06;%d;ON;\r\n" % unit).encode())
+        sendQueue.put(("10;NewKaku;00baea06;%x;ON;\r\n" % unit).encode())
     else:
-        sendQueue.put(("10;NewKaku;00baea06;%d;OFF;\r\n" % unit).encode())
+        sendQueue.put(("10;NewKaku;00baea06;%x;OFF;\r\n" % unit).encode())
 
 
 def setEcolite(unit, val):
@@ -117,7 +117,7 @@ def on_message(_client, userdata, msg):
 
 
 def on_message_homelogic(_client, userdata, msg):
-    # print(msg.topic + " " + str(msg.payload))
+    print(msg.topic + " " + str(msg.payload))
     topics = msg.topic.split("/")
 
     deviceName = topics[2]  # huis/RFXtrx/KaKu-12/out
@@ -125,7 +125,7 @@ def on_message_homelogic(_client, userdata, msg):
 
     # KaKu-12
     if cmnd[0] == "KaKu":
-        # print("Activate KaKu WCD: %s" % cmnd[1])
+        print("Activate KaKu WCD: %s" % cmnd[1])
         setKaKu(int(cmnd[1]), msg.payload)
 
     # Ecolite-2
@@ -281,10 +281,10 @@ def serialPortThread():
                         _id = getId(msg[0])
                         sensorId = (int(_id, 16) & 0xF0000) >> 16
                         if rfLinkDevicesNameTable[deviceName][sensorId][0] == rfLinkNr:
-                            temp = getTemp(msg[1])
+                            temp = round(getTemp(msg[1]), 1)
                             hum = getHum(msg[2])
                             
-                            sensorData = {'Temperature': "%1.1f" % temp, 'Humidity': hum}
+                            sensorData = {'Temperature': temp, 'Humidity': hum}
                             sensorData['Hstat'] = getHumStatus(msg[3])
                             sensorData['Batt'] = getBattStatus(msg[4])
 
@@ -317,16 +317,6 @@ def serialPortThread():
                             mqttTopic = rfLinkDevicesNameTable[deviceName][_id][1]
                             mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings["MQTT_ServerIP"], retain=True)
                             # print((" -> Auriol Binnenplaats temp: %2.1f" % temp))
-
-                    elif deviceName == "Firstline":
-                        _id = getId(msg[0])
-                        if rfLinkDevicesNameTable[deviceName][_id][0] == rfLinkNr:
-                            temp = getTemp(msg[1])
-                            sensorData = {'Temperature': round(temp, 1)}
-
-                            mqttTopic = rfLinkDevicesNameTable[deviceName][_id][1]
-                            mqtt_publish.single(mqttTopic, json.dumps(sensorData, separators=(', ', ':')), hostname=settings["MQTT_ServerIP"], retain=True)
-                            # print((" -> Firstline Vriezer Werkplaats temp: %2.1f" % temp))
 
                     elif deviceName.startswith("Nodo RadioFrequencyLink"):
                         # RFLink is started
