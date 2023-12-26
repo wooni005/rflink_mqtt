@@ -45,7 +45,7 @@ rfLinkDevicesNameTable = {
         "63aec3": [ RFLINK_ZOLDER,    "huis/RFLink/Rook-Werkplaats/rook" ]
     },
     "Auriol": {
-        "00B1": [ RFLINK_ZOLDER,      "huis/RFLink/Temp-Binnenplaats/temp" ]
+        "0052": [ RFLINK_ZOLDER,      "huis/RFLink/Temp-Binnenplaats/temp" ]
     },
     #Firstline ['ID=0080', 'TEMP=017d']
     "Firstline": {
@@ -305,7 +305,7 @@ def serialPortThread():
                         _id = getId(msg[0])
                         # print("RFLink: %s %s" % (deviceName, msg))
 
-                    # Auriol ['ID=004B', 'TEMP=8028', 'BAT=LOW']
+                    # Auriol ['ID=0052', 'TEMP=8028', 'BAT=LOW']
                     # 20;38;Auriol;ID=00B1;TEMP=000c;BAT=OK;
                     elif deviceName == "Auriol":
                         _id = getId(msg[0])
